@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Turnover What-If — Predictive Analytics demo</title>
+<style>
+  :root{
+    --blue:#0B41CD; --dark:#022366; --lightblue:#1482FA; --green:#00A17D;
+    --orange:#FF7D29; --red:#C40000; --grey:#544F4F; --greyl:#C2BAB5;
+    --bg:#FFFFFF; --panel:#F5F5F2;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:"Roche Sans","Segoe UI",Arial,sans-serif;
+    color:var(--dark); background:var(--bg);
+  }
+  header{
+    background:var(--blue); color:#fff; padding:20px 32px;
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  header h1{font-size:22px; margin:0; font-weight:700;}
+  header p{margin:4px 0 0; font-size:13px; color:#BDE3FF;}
+  .wrap{
+    display:grid; grid-template-columns:1fr 1fr; gap:28px;
+    max-width:1180px; margin:26px auto; padding:0 24px;
+  }
+  .card{background:var(--panel); border-radius:14px; padding:24px 26px;}
+  .card h2{font-size:15px; margin:0 0 18px; color:var(--blue); font-weight:700;
+    letter-spacing:.02em; text-transform:uppercase;}
+  .ctrl{margin-bottom:20px;}
+  .ctrl .row{display:flex; justify-content:space-between; align-items:baseline;}
+  .ctrl label{font-size:14px; font-weight:600; color:var(--dark);}
+  .ctrl .val{font-size:12.5px; color:var(--grey);}
+  input[type=range]{
+    -webkit-appearance:none; width:100%; height:6px; border-radius:4px;
+    background:linear-gradient(90deg,var(--greyl),var(--lightblue)); margin-top:10px;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:20px; height:20px; border-radius:50%;
+    background:var(--blue); border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.3);
+    cursor:pointer;
+  }
+  input[type=range]::-moz-range-thumb{
+    width:20px; height:20px; border-radius:50%; background:var(--blue);
+    border:3px solid #fff; cursor:pointer;
+  }
+  .scale{display:flex; justify-content:space-between; font-size:10.5px;
+    color:var(--greyl); margin-top:3px;}
+  .btns{display:flex; gap:12px; margin-top:6px;}
+  button{
+    font-family:inherit; font-size:13px; font-weight:600; cursor:pointer;
+    border:none; border-radius:8px; padding:10px 16px;
+  }
+  .reset{background:var(--blue); color:#fff;}
+  .reset:hover{background:var(--dark);}
+  .gaugewrap{display:flex; flex-direction:column; align-items:center; justify-content:flex-start;}
+  .gauge-content{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%;}
+  .readout{font-size:56px; font-weight:700; color:var(--dark); line-height:1; margin-top:6px;}
+  .readlabel{font-size:13px; color:var(--grey); margin-top:6px; text-align:center;}
+  .delta{font-size:15px; font-weight:600; margin-top:14px; height:22px; text-align:center;}
+  .foot{
+    max-width:1180px; margin:8px auto 30px; padding:14px 24px; font-size:11.5px;
+    color:var(--grey); border-top:1px solid #EAEBEB;
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Will this employee leave?</h1>
+    <p>Prediction Model 2</p>
+  </div>
+</header>
+
+<div class="wrap">
+  <!-- Controls -->
+  <div class="card">
+    <h2>PREDICTORS</h2>
+    <div id="controls"></div>
+    <div class="btns">
+      <button class="reset" onclick="resetAvg()">Reset profile</button>
+    </div>
+  </div>
+
+  <!-- Gauge -->
+  <div class="card gaugewrap">
+    <h2 style="align-self:flex-start;">PREDICTED LIKELIHOOD OF LEAVING</h2>
+    <div class="gauge-content">
+      <svg id="dial" width="360" height="230" viewBox="0 0 360 230"></svg>
+      <div class="readout" id="readout">24%</div>
+      <div class="readlabel">Baseline: a typical average-profile employee</div>
+      <div class="delta" id="delta">&nbsp;</div>
+    </div>
+  </div>
+</div>
+
+<div class="foot">
+  <strong>SYNTHETIC data — illustrative only</strong> (no real people or PII)[cite: 6].
+  Drivers adapted from
+  Griffeth, Hom &amp; Gaertner (2000), <em>Journal of Management</em> 26(3), 463&ndash;488,
+  doi:10.1177/014920630002600305[cite: 6].
+</div>
+
+<script>
+const INTERCEPT = -1.1842882789387739;
+const PREDICTORS = [
+  {key:"job_sat", label:"Job satisfaction", coef:-0.681630238827603,
+     mean:2.946, sd:0.664459, min:1.5, max:4.8, step:0.1, unit:"/5",
+     lowlab:"Lower", highlab:"Higher"},
+  {key:"promo", label:"Months since last promotion", coef:0.5650358220353087,
+     mean:27.361, sd:16.691421, min:2, max:84, step:1, unit:" months",
+     lowlab:"Recent", highlab:"Long ago"},
+  {key:"manager", label:"Manager quality", coef:-0.6299257088762231,
+     mean:3.469, sd:0.685754, min:1.7, max:5.0, step:0.1, unit:"/5",
+     lowlab:"Lower", highlab:"Higher"},
+  {key:"tenure", label:"Tenure", coef:-0.6685468789648173,
+     mean:5.939, sd:2.853608, min:1.1, max:19.1, step:0.1, unit:" years",
+     lowlab:"Shorter", highlab:"Longer"},
+  {key:"pay", label:"Salary vs market benchmark", coef:-0.12767074403831352,
+     mean:0.998, sd:0.091790, min:0.75, max:1.24, step:0.01, unit:"%",
+     lowlab:"Lower", highlab:"Higher"},
+];
+
+const state = {};
+PREDICTORS.forEach(p => state[p.key] = p.mean);
+
+function zScore(p){
+  return (state[p.key] - p.mean) / p.sd;
+}
+
+function logits(){
+  let z = INTERCEPT;
+  PREDICTORS.forEach(p => { z += p.coef * zScore(p); });
+  return z;
+}
+function prob(){
+  const z = logits();
+  return 1/(1+Math.exp(-z));
+}
+const BASELINE = (function(){
+  return 1/(1+Math.exp(-INTERCEPT));
+})();
+
+const cont = document.getElementById("controls");
+PREDICTORS.forEach(p => {
+  const d = document.createElement("div");
+  d.className = "ctrl";
+  d.innerHTML = `
+    <div class="row"><label>${p.label}</label><span class="val" id="v_${p.key}">average</span></div>
+    <input type="range" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.mean}" id="s_${p.key}">
+    <div class="scale"><span>${p.lowlab}</span><span>average</span><span>${p.highlab}</span></div>`;
+  cont.appendChild(d);
+  d.querySelector("input").addEventListener("input", e => {
+    state[p.key] = parseFloat(e.target.value);
+    updateValLabel(p);
+    render();
+  });
+});
+
+function updateValLabel(p){
+  const span = document.getElementById("v_"+p.key);
+  const value = state[p.key];
+  let formatted = "";
+  if (p.key === "pay") {
+    formatted = Math.round(value * 100) + "%";
+  } else {
+    formatted = value.toFixed(p.step < 1 ? 1 : 0) + p.unit;
+  }
+  span.textContent = formatted;
+}
+
+const dial = document.getElementById("dial");
+const CX=180, CY=190, R=140;
+const A0=Math.PI, A1=0;
+
+function polar(cx,cy,r,ang){ return [cx+r*Math.cos(ang), cy-r*Math.sin(ang)]; }
+function arcPath(r, fromFrac, toFrac){
+  const a = A0 + (A1-A0)*fromFrac;
+  const b = A0 + (A1-A0)*toFrac;
+  const [x1,y1]=polar(CX,CY,r,a);
+  const [x2,y2]=polar(CX,CY,r,b);
+  const large = Math.abs(b-a) > Math.PI ? 1 : 0;
+  const sweep = 1;
+  return `M ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 ${large} ${sweep} ${x2.toFixed(1)} ${y2.toFixed(1)}`;
+}
+function colorFor(p){
+  if (p < 0.25) return "#00A17D";
+  if (p < 0.45) return "#FF7D29";
+  return "#C40000";
+}
+
+function drawDial(p){
+  const frac = Math.max(0, Math.min(1, p));
+  const baseFrac = Math.max(0, Math.min(1, BASELINE));
+  let svg = "";
+  svg += `<path d="${arcPath(R,0,1)}" fill="none" stroke="#EAEBEB" stroke-width="22" stroke-linecap="round"/>`;
+  svg += `<path d="${arcPath(R,0,frac)}" fill="none" stroke="${colorFor(p)}" stroke-width="22" stroke-linecap="round"/>`;
+  const [bx,by] = polar(CX,CY,R+16, A0+(A1-A0)*baseFrac);
+  const [bx2,by2] = polar(CX,CY,R-16, A0+(A1-A0)*baseFrac);
+  svg += `<line x1="${bx.toFixed(1)}" y1="${by.toFixed(1)}" x2="${bx2.toFixed(1)}" y2="${by2.toFixed(1)}" stroke="#022366" stroke-width="3" stroke-dasharray="3,3"/>`;
+  const [lx,ly] = polar(CX,CY,R+30, A0+(A1-A0)*baseFrac);
+  svg += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="11" fill="#022366" text-anchor="middle" font-weight="700">avg ${(BASELINE*100).toFixed(0)}%</text>`;
+  const na = A0+(A1-A0)*frac;
+  const [nx,ny] = polar(CX,CY,R-30,na);
+  svg += `<line x1="${CX}" y1="${CY}" x2="${nx.toFixed(1)}" y2="${ny.toFixed(1)}" stroke="#022366" stroke-width="4" stroke-linecap="round"/>`;
+  svg += `<circle cx="${CX}" cy="${CY}" r="8" fill="#022366"/>`;
+  svg += `<text x="30" y="212" font-size="12" fill="#544F4F" text-anchor="middle">0%</text>`;
+  svg += `<text x="330" y="212" font-size="12" fill="#544F4F" text-anchor="middle">100%</text>`;
+  dial.innerHTML = svg;
+}
+
+function render(){
+  const p = prob();
+  document.getElementById("readout").textContent = Math.round(p*100)+"%";
+  document.getElementById("readout").style.color = colorFor(p);
+  drawDial(p);
+  const diff = (p - BASELINE)*100;
+  const del = document.getElementById("delta");
+  if (Math.abs(diff) < 0.5){ del.textContent = "\u2248 same as an average employee"; del.style.color="#544F4F"; }
+  else if (diff > 0){ del.textContent = "\u25B2 " + diff.toFixed(0) + " points MORE likely to leave than average"; del.style.color="#C40000"; }
+  else { del.textContent = "\u25BC " + Math.abs(diff).toFixed(0) + " points LESS likely to leave than average"; del.style.color="#00A17D"; }
+}
+
+function resetAvg(){
+  PREDICTORS.forEach(p => {
+    state[p.key]=p.mean;
+    document.getElementById("s_"+p.key).value=p.mean;
+    updateValLabel(p);
+  });
+  render();
+}
+
+PREDICTORS.forEach(updateValLabel);
+render();
+</script>
+</body>
+</html>
